@@ -1,0 +1,8 @@
+[package]
+name = "battery"
+version = "0.1.0"
+authors = ["Matt Potok <potok@mattpotok.com>"]
+edition = "2018"
+
+[dependencies]
+regex = "1"
