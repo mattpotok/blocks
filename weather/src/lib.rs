@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::fmt;
 use std::path;
@@ -16,8 +16,7 @@ use serde_yaml;
 // TODO remove the Debug
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    //error_file: String,
-    error_file_path: path::PathBuf,  // TODO change this to a string instead (?)
+    error_file_path: path::PathBuf,
     open_weather_api_key: String,
     temperature_units: char,
 }
@@ -55,12 +54,14 @@ impl Config {
             return Err(e.into());
         }
 
+        /* FIXME No need to explicitly create a file
         if !config.error_file_path.exists() {
             if let Err(e) = File::create(&config.error_file_path) {
                 let e = format!("Error (Config::new) - {}", e);
                 return Err(e.into());
             }
         }
+        */
 
         // Verify `temperature_unit`
         config.temperature_units = config.temperature_units.to_ascii_uppercase();
@@ -234,6 +235,18 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
                      WTR File Error!\n\
                      #FF0000";
 
+    let mut file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&config.error_file_path) {
+        Ok(v) => v,
+        Err(E) => {
+            println!("{}", file_desc);
+            return;
+        }
+    };
+
+    /*
     let mut file = match File::open(&config.error_file_path) {
         Ok(v) => v,
         Err(e) => match e.kind() {
@@ -252,15 +265,34 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
             },
         },
     };
+    */
 
     // Write error to file
     let dt = chrono::offset::Local::now().format("%a %b %e %T %Y").to_string();
-    let error_string = format!("{} [{}] {}", dt, "WTR", error);
+    //let error_string = format!("{} [{}] {}", dt, "WTR", error);
+    writeln!(file, "{} [{}] {}", dt, "WTR", error);
 
+    /* TODO debug this
     if let Err(_) = file.write_all(error_string.as_bytes()) {
         println!("{}", file_desc);
         return;
     }
+    */
+    
+    /*
+    let mut file = File::open("/home/potok/debug.txt").unwrap();
+    match file.write_all(b"Hello, world!") {
+        Ok(_) => {},
+        Err(e) => println!("Error - {}", e),
+    };
+    */
+
+
+    /*
+    let mut file = File::create("~/debug.txt").unwrap();
+    file.write_all(b"Hello, world!").unwrap();
+    */
+    
 
     // Ok(())
 

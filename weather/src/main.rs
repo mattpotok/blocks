@@ -5,7 +5,6 @@ use std::process;
 
 use weather;
 
-// TODO write error string to a file
 fn main() {
     // Parse configuration file
     let args: Vec<String> = env::args().collect();
