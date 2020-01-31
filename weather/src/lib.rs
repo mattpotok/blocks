@@ -10,6 +10,10 @@ use reqwest;
 use serde::Deserialize;
 use serde_yaml;
 
+// TODO incorporate this
+use std::net::{SocketAddr, ToSocketAddrs, TcpStream};
+use std::time::Duration;
+
 // TODO update version of request
 // FIXME error message function names
 
@@ -181,8 +185,12 @@ impl OpenWeatherReport {
     ) -> Result<OpenWeatherReport, Box<dyn Error>> {
         // Get OpenWeather report
         let url = format!(
-            "http://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}",
+            "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}",
             location.lat, location.lon, config.open_weather_api_key);
+
+        // FIXME temporary
+        println!("Url - {}", url);
+
         let mut resp = match reqwest::get(&url) {
             Ok(v) => v,
             Err(e) => {
@@ -305,6 +313,101 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
     };
 
     file.write
+    */
+}
+
+
+pub fn check_online() -> bool {
+    /*
+    let addrs_iter = "www.google.com:80".to_socket_addrs();
+    println!("Output - {:?}", addrs_iter);
+    */
+
+    /*
+    let stream = TcpStream::connect("www.google.com:80");
+    println!("Output - {:?}", stream);
+    */
+
+    let mut online = false;
+    for letter in b'a'..=b'm' {
+       let addr = format!("{}.root-servers.net:80", letter as char);
+       if let Ok(_) = addr.to_socket_addrs() {
+           println!("Address - {}", addr);
+           online = true;
+           break;
+       }
+    }
+
+    online
+
+    /*
+    if let Some(_) = b'a'..=b'm'.iter().find_map(|l| {
+           let addr = format!("{}.root-servers.net:80", l as char);
+           addr.to_socket_addrs() }) {
+        println!("Online!");
+    } else {
+        println!("Offline!");
+    }
+    */
+
+    /*
+    for letter in b'a'..=b'm' { 
+        println!("URL - {}", format!("{}.root-servers.net:80", letter as char));
+    }
+    */
+
+    /* TODO use the root servers rather than multiple companies (valid from ['a'...'m'])
+    let addrs = [
+        //"www.google.com:80", "www.baidu.com:80",
+        "f.root-servers.net:80",
+    ];
+
+    // TODO use a map pattern here to return true on match (?)
+    let mut online = false;
+    for addr in &addrs {
+        println!("Address - {}", addr);
+
+        if let Ok(_) = addr.to_socket_addrs() {
+            println!("Valid address - {}", addr);
+            online = true;
+            break;
+        }
+    }
+
+    if online == false {
+        println!("Offline!");
+    } else {
+        println!("Online!");
+    }
+    */
+
+    /*
+    //let addrs = ["8.8.8.8:80", "208.67.222.222:80", "1.1.1.1:80"]; 
+    let addrs = [
+        SocketAddr::from(([8, 8, 8, 8], 80)),
+        SocketAddr::from(([208, 67, 222, 222], 80)),
+        SocketAddr::from(([1, 1, 1, 1], 80)),
+    ];
+
+
+    for addr in &addrs {
+        println!("Address - {}", addr);
+
+        if let Err(e) = TcpStream::connect_timeout(addr, Duration::new(3, 0)) {
+            println!("Unable to connect - {}!", e);
+        } else {
+            println!("Connected to {}!", addr);
+        }
+    }
+    */
+
+    /*
+    if let Err(e) = TcpStream::connect(&addrs[..], Duration::new(3, 0)) {
+        println!("Unable to connect - {}!", e);
+        return;
+    } else {
+        println!("Connected!");
+    }
     */
 }
 

@@ -6,6 +6,12 @@ use std::process;
 use weather;
 
 fn main() {
+    // Temporary
+    weather::check_online(); 
+
+    return;
+
+
     // Parse configuration file
     let args: Vec<String> = env::args().collect();
     let config = match weather::Config::new(&args) {
@@ -25,6 +31,8 @@ fn main() {
         }
     };
 
+    println!("IP address - {}", ipv4);
+
 
     let location = match weather::GeoLocation::new(ipv4) {
         Ok(v) => v,
@@ -33,6 +41,8 @@ fn main() {
             process::exit(1);
         }
     };
+
+    println!("Geolocation - {:?}", location);
 
     let report = match weather::OpenWeatherReport::new(&location, &config) {
         Ok(v) => v,
