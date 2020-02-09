@@ -20,15 +20,17 @@ use log::*;
 // FIXME error message function names
 // TODO run program on click on click as well
 
+const DEFAULT_ERROR: &str = "WTR Error!\nWTR Error!\n#FF0000";
+
 #[derive(Deserialize)]
 pub struct Config {
+    #[serde(default = "Config::default_bool_false")]
+    pub log_info: bool,
+
     #[serde(default = "Config::default_bool_true")]
     check_connection: bool,
 
     log_file_path: String,
-
-    #[serde(default = "Config::default_bool_false")]
-    log_info: bool,
 
     open_weather_api_key: String,
 
@@ -96,9 +98,7 @@ impl Config {
         if !(unit == 'F' || unit == 'C'  || unit == 'K') {
             error!("weather::Config::new: invalid temperature unit '{}', select from \
                 ['C', 'F', 'K']", unit);
-
-            let e = "WTR Error!\nWTR Error!\n#FF0000";
-            return Err(e.into());
+            return Err(DEFAULT_ERROR.into());
         }
 
         // Log information
@@ -122,26 +122,32 @@ impl Config {
     }
 }
 
-pub struct IPv4 (String);
+pub struct IPv4(String);
 
 impl IPv4 {
-    pub fn new() -> Result<IPv4, Box<dyn Error>> {
+    pub fn new(log: bool) -> Result<IPv4, String> {
         // Get IP from ipify.org
         let url = "https://api.ipify.org";
         let mut resp = match reqwest::get(url) {
             Ok(v) => v,
             Err(e) => {
-                let e = format!("Error (get_ip) - {}", e);
-                return Err(e.into());
+                error!("weather::IPv4::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
             }
         };
 
         // Extract response body
         match resp.text() {
-            Ok(v) => Ok(IPv4(v)),
+            Ok(v) => {
+                // Log information
+                if log {
+                    info!("weather::IPv4::new: external IP is {}", v);
+                }
+                Ok(IPv4(v))
+            },
             Err(e) => {
-                let e = format!("Error (get_ip) - {}", e);
-                Err(e.into())
+                error!("weather::IPv4::new: {}", e);
+                Err(DEFAULT_ERROR.into())
             }
         }
     }
@@ -153,9 +159,7 @@ impl fmt::Display for IPv4 {
     }
 }
        
-
-// TODO remove the Debug
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct GeoLocation {
     status: String,
     lat: f64,
@@ -165,48 +169,56 @@ pub struct GeoLocation {
     message: String,
 }
 
-// FIXME error strings
 impl GeoLocation {
-    pub fn new(ip: IPv4) -> Result<GeoLocation, Box<dyn Error>> {
+    pub fn new(ip: IPv4, log: bool) -> Result<GeoLocation, String> {
         // Get Geoleocation
         let url = format!(
             "http://ip-api.com/json/{}?fields=status,message,lat,lon", ip);
         let mut resp = match reqwest::get(&url) {
             Ok(v) => v,
             Err(e) => {
-                let e = format!("Error (get_geolocation) - {}", e);
-                return Err(e.into());
+                error!("weather::GeoLocation::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
             }
         };
 
-        // FIXME rename err to e
         // Extract response body
         let location: GeoLocation = match resp.json() {
             Ok(v) => v,
-            Err(err) => {
-                let err = format!("Error (get_geolocation) - {}", err);
-                return Err(err.into());
+            Err(e) => {
+                error!("weather::GeoLocation::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
             }
         };
 
         // Check body status
         if location.status == "fail" {
-            let err = format!("Error (get_geolocation) - ip-api: {}",
-                              location.message);
-            return Err(err.into());
+            error!("weather::GeoLocation::new: {}", location.message);
+            return Err(DEFAULT_ERROR.into());
+        }
+
+        // Log information
+        if log {
+            info!("weather::GeoLocation::new: geolocation is {}", location);
         }
 
         Ok(location)
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct OpenWeatherWeather {
-    main: String,
-    description: String,
+impl fmt::Display for GeoLocation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "lat: {:.3}, lon: {:.3}", self.lat, self.lon)
+    }
 }
 
-#[derive(Deserialize, Debug)]
+// FIXME remove all the debugs
+#[derive(Deserialize)]
+pub struct OpenWeatherWeather {
+    main: String,
+}
+
+#[derive(Deserialize)]
 pub struct OpenWeatherMain {
     temp: f32,
 
@@ -214,30 +226,25 @@ pub struct OpenWeatherMain {
     scale: char,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct OpenWeatherReport {
     main: OpenWeatherMain,
     weather: Vec<OpenWeatherWeather>,
 }
 
-
 impl OpenWeatherReport {
     pub fn new(
         location: &GeoLocation, config: &Config
-    ) -> Result<OpenWeatherReport, Box<dyn Error>> {
+    ) -> Result<OpenWeatherReport, String> {
         // Get OpenWeather report
         let url = format!(
             "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}",
             location.lat, location.lon, config.open_weather_api_key);
-
-        // FIXME temporary
-        println!("Url - {}", url);
-
         let mut resp = match reqwest::get(&url) {
             Ok(v) => v,
             Err(e) => {
-                let e = format!("Error (Weather::new) - {}", e);
-                return Err(e.into());
+                error!("weather::OpenWeatherReport::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
             }
         };
 
@@ -245,8 +252,8 @@ impl OpenWeatherReport {
         let mut report: OpenWeatherReport = match resp.json() {
             Ok(v) => v,
             Err(e) => {
-                let e = format!("Error (last fn) - {}", e);
-                return Err(e.into());
+                error!("weather::OpenWeatherReport::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
             }
         };
 
@@ -257,6 +264,14 @@ impl OpenWeatherReport {
             'F' => report.main.temp = 
                 1.8 * (report.main.temp - 273.15) + 32.0,
             _ => (),
+        }
+
+        // Log information
+        if config.log_info {
+            info!("weather::OpenWeatherReport::new: \
+                  current weather is{:.1}°{}, {}", report.main.temp,
+                  report.main.scale,
+                  report.weather[0].main.to_ascii_lowercase());
         }
 
         Ok(report)
@@ -270,10 +285,6 @@ impl OpenWeatherReport {
         
         format!("{}\n{}\n{}", full_text, short_text, color)
     }
-}
-
-pub fn generate_error() -> Result<(), Box<dyn Error>> {
-    Err("An error".into())
 }
 
 /*
