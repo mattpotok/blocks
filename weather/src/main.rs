@@ -5,35 +5,81 @@ use std::process;
 
 use weather;
 
+// Testing
+use std::fs::{OpenOptions, File};
+use log::*;
+//use simplelog::{Config, LevelFilter, WriteLogger};
+use simplelog::*;
+
+
 fn main() {
     // Temporary
-    weather::check_online(); 
+    //weather::check_online(); 
+    
+    /*
+    let file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/home/potok/log.txt") {
+        Ok(v) => v,
+        Err(_) => {
+            println!("Unable to open file!");
+            return;
+        }
+    };
+
+    // TODO modify the configuration here
+    let config = ConfigBuilder::new()
+        .set_time_format_str("%a %b %e %T %Y")
+        .set_time_to_local(true)
+        .build();
+     
+    WriteLogger::init(LevelFilter::Debug, config, file);
+    info!("Test an 'info'");
+    debug!("Test an 'debug'");
+    error!("Test an 'error'");
 
     return;
+    */
 
 
     // Parse configuration file
     let args: Vec<String> = env::args().collect();
     let config = match weather::Config::new(&args) {
         Ok(v) => v,
-        Err(e) => {
-            // TODO figure this one out
+        Err(s) => {
+            println!("{}", s);
             process::exit(1);
         }
     };
+
+    // TODO add option to check if have an internet connection
+
+    // Initialize the logger
+    // TODO handle any errors with logger initialization
+    /*
+    if let Err(_) = weather::initialize_logger(&config) {
+        println!("WTR Logger Error!\nWTR Logger Error!\n#FF0000");
+        process::exit(1);
+    }
+    */
 
     // Fetch external IP
     let ipv4 = match weather::IPv4::new() {
         Ok(v) => v,
         Err(e) => {
-            weather::handle_error(e, &config);
+            // FIXME remove this!
+            error!("({}) {}", "WTR", e);
+            //weather::handle_error(e, &config);
+            println!("WTR IPv4 Error!\nWTR IPv4 Error!\n#FF0000");
             process::exit(1);
         }
     };
 
+    // Make this an optional info
     println!("IP address - {}", ipv4);
 
-
+    // Fetch geolocation based on IP
     let location = match weather::GeoLocation::new(ipv4) {
         Ok(v) => v,
         Err(e) => {

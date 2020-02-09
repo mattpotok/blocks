@@ -2,42 +2,53 @@ use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::fmt;
-use std::path;
-use std::process;
 
 use chrono;
 use reqwest;
 use serde::Deserialize;
 use serde_yaml;
 
-// TODO incorporate this
+// TODO clean these up!
 use std::net::{SocketAddr, ToSocketAddrs, TcpStream};
 use std::time::Duration;
 
+// TODO don't use the '*'
+use simplelog::*;
+use log::*;
+
 // TODO update version of request
 // FIXME error message function names
+// TODO run program on click on click as well
 
-// TODO remove the Debug
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct Config {
-    error_file_path: path::PathBuf,
+    #[serde(default = "Config::default_bool_true")]
+    check_connection: bool,
+
+    log_file_path: String,
+
+    #[serde(default = "Config::default_bool_false")]
+    log_info: bool,
+
     open_weather_api_key: String,
+
+    #[serde(default = "Config::default_temperature_unit")]
     temperature_units: char,
 }
 
 impl Config {
-    pub fn new(args: &[String]) -> Result<Config, Box<dyn Error>> {
+    pub fn new(args: &[String]) -> Result<Config, String> {
         // Check number of args
         if args.len() != 2 {
-            let e = "Error (Config::new) - not enough arguments";
+            let e = "WTR Args error!\nWTR Args error!\n#FF000";
             return Err(e.into());
         }
 
         // Open configuration file
         let file = match File::open(&args[1]) {
             Ok(v) => v,
-            Err(e) => {
-                let e = format!("Error (Config::new) - {}", e);
+            Err(_) => {
+                let e = "WTR File error!\nWTR File error!\n#FF000";
                 return Err(e.into());
             }
         };
@@ -45,38 +56,69 @@ impl Config {
         // Parse configuration file
         let mut config: Config = match serde_yaml::from_reader(file) {
             Ok(v) => v,
-            Err(e) => {
-                let e = format!("Error (Config::new) - {}", e);
+            Err(_) => {
+                let e = "WTR Parse error!\nWTR Parse error\n#FF0000";
                 return Err(e.into());
             }
         };
 
-        // Verify `error_file`
-        if config.error_file_path.is_dir() {
-            let e = "Error (Config::new) - \
-                specify file for parameter `error_file_path`.";
+        // Initialize file logger
+        let log_file = match OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&config.log_file_path) {
+            Ok(v) => v,
+            Err(_) => {
+                let e = "WTR File error!\nWTR File error!\n#FF0000";
+                return Err(e.into());
+            }
+        };
+
+        let logger_config = simplelog::ConfigBuilder::new()
+            .set_time_format_str("%a %b %e %T %Y")
+            .set_time_to_local(true)
+            .build();
+
+        if let Err(_) = WriteLogger::init(LevelFilter::Info, logger_config,
+                                          log_file) {
+            let e = "WTR Logger error!\nWTR Logger error!\n#FF000";
             return Err(e.into());
         }
 
-        /* FIXME No need to explicitly create a file
-        if !config.error_file_path.exists() {
-            if let Err(e) = File::create(&config.error_file_path) {
-                let e = format!("Error (Config::new) - {}", e);
-                return Err(e.into());
-            }
+        // Check access to Internet
+        if config.check_connection && !check_connection() {
+            return Err("WTR 404\nWTR F04\n#FFFFFF".into());
         }
-        */
 
         // Verify `temperature_unit`
         config.temperature_units = config.temperature_units.to_ascii_uppercase();
         let unit = config.temperature_units;
         if !(unit == 'F' || unit == 'C'  || unit == 'K') {
-            let e = format!("Error (Config::new) - \
-                invalid temperature unit '{}', select from ['C', 'F', 'K'].", unit);
+            error!("weather::Config::new: invalid temperature unit '{}', select from \
+                ['C', 'F', 'K']", unit);
+
+            let e = "WTR Error!\nWTR Error!\n#FF0000";
             return Err(e.into());
         }
 
+        // Log information
+        if config.log_info {
+            info!("weather::Config::new: parsed configuration");
+        }
+
         Ok(config)
+    }
+
+    fn default_bool_false() -> bool {
+        false
+    }
+
+    fn default_bool_true() -> bool {
+        true
+    }
+
+    fn default_temperature_unit() -> char {
+        'F'
     }
 }
 
@@ -234,11 +276,8 @@ pub fn generate_error() -> Result<(), Box<dyn Error>> {
     Err("An error".into())
 }
 
-// TODO make this available to all blocks (?)
-// TODO generalize and remove return value
-pub fn handle_error(error: Box<dyn Error>, config: &Config) {
-        //-> Result<(), Box<dyn Error>> {
-    // Try to open the file
+/*
+pub fn initialize_logger(config: &Config) {
     let file_desc = "WTR File error!\n\
                      WTR File Error!\n\
                      #FF0000";
@@ -248,11 +287,39 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
         .create(true)
         .open(&config.error_file_path) {
         Ok(v) => v,
-        Err(E) => {
+        Err(e) => {
             println!("{}", file_desc);
             return;
         }
     };
+
+    // TODO handle any errors!
+    WriteLogger::init(LevelFilter::Info, simplelog::Config::default(), file);
+}
+*/
+
+// TODO remove this function completely!
+// TODO make this available to all blocks (?)
+// TODO generalize and remove return value
+pub fn handle_error(error: Box<dyn Error>, config: &Config) {
+        //-> Result<(), Box<dyn Error>> {
+    // Try to open the file
+    let file_desc = "WTR File error!\n\
+                     WTR File Error!\n\
+                     #FF0000";
+
+    /*
+    let mut file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&config.error_file_path) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{}", file_desc);
+            return;
+        }
+    };
+    */
 
     /*
     let mut file = match File::open(&config.error_file_path) {
@@ -275,10 +342,11 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
     };
     */
 
+    /* TODO allow custom formatting for logger
     // Write error to file
     let dt = chrono::offset::Local::now().format("%a %b %e %T %Y").to_string();
-    //let error_string = format!("{} [{}] {}", dt, "WTR", error);
     writeln!(file, "{} [{}] {}", dt, "WTR", error);
+    */
 
     /* TODO debug this
     if let Err(_) = file.write_all(error_string.as_bytes()) {
@@ -316,8 +384,7 @@ pub fn handle_error(error: Box<dyn Error>, config: &Config) {
     */
 }
 
-
-pub fn check_online() -> bool {
+fn check_connection() -> bool {
     /*
     let addrs_iter = "www.google.com:80".to_socket_addrs();
     println!("Output - {:?}", addrs_iter);
@@ -328,17 +395,14 @@ pub fn check_online() -> bool {
     println!("Output - {:?}", stream);
     */
 
-    let mut online = false;
     for letter in b'a'..=b'm' {
        let addr = format!("{}.root-servers.net:80", letter as char);
        if let Ok(_) = addr.to_socket_addrs() {
-           println!("Address - {}", addr);
-           online = true;
-           break;
+           return true;
        }
     }
 
-    online
+    false
 
     /*
     if let Some(_) = b'a'..=b'm'.iter().find_map(|l| {
