@@ -3,6 +3,8 @@ extern crate regex;
 use std::process::Command;
 use regex::Regex;
 
+use battery;
+
 #[derive(Default)]
 struct Battery {
     charge: u8,
@@ -12,7 +14,35 @@ struct Battery {
     time: String,
 }
 
+fn test1() {
+    battery::read_file(); 
+    
+    let path = "/sys/class/power_supply/BAT0/charge_now";
+    //let out: Result<u32, Box<dyn std::error::Error>> = battery::read_file_generic(path);
+    let out = battery::read_file_generic::<u32>(path);
+    println!("Out - {:?}", out);
+
+    // Testing
+    let b1 = battery::Battery::default();
+    println!("Battery - {:?}", b1);
+
+    //let b2 = battery::Battery::new();
+    //println!("Battery - {:?}", b2);
+}
+
+fn test2() {
+    if let Ok(batteries) = battery::Batteries::new() {
+        println!("Batteries - {:?}", batteries);
+    }
+}
+
 fn main() {
+    // Temporary
+    test2();
+
+    return;
+
+
     // Variables
     let mut battery: Battery = Default::default();
 
