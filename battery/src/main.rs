@@ -1,5 +1,7 @@
+// TODO get rid of this one
 extern crate regex;
 
+use std::path::PathBuf;
 use std::process::Command;
 use regex::Regex;
 
@@ -31,7 +33,9 @@ fn test1() {
 }
 
 fn test2() {
-    if let Ok(batteries) = battery::Batteries::new() {
+    // let path = PathBuf::from("/sys/class/power_supply");
+    let path = PathBuf::from("/home/potok/programs/rust/blocks/battery/tests/two_batteries_chr_dis");
+    if let Ok(batteries) = battery::Batteries::new(&path) {
         println!("Batteries - {:?}", batteries);
     }
 }
