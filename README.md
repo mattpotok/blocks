@@ -9,10 +9,17 @@ A collection of personal i3 blocklets for [i3blocks][1].
 
 ## Notes
 
-The individual documentation for the blocklets assumes that all blocklet
-binaries will be copied to `~/.config/i3blocks/bin` and any required
-configuration files will be copied to `~/.config/i3blocks/cfg`. These two paths
-can be changed as you see fit.
+The documentation assumes the following configuration structure for i3blocks:
+
+``` 
+└── ~/.config/i3blocks/  # i3blocks configuration directory
+    ├── bin/             # directory with blocklet binaries
+    ├── cfg/             # directory with blocklet configurations
+    ├── blocks.log       # log file for blocklets
+    └── config           # i3blocks configuration file
+```
+
+The paths above can be configured as you see fit.
 
 
 [1]: https://github.com/vivien/i3blocks
