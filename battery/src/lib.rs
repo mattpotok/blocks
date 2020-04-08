@@ -1,40 +1,135 @@
-use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use approx::relative_eq;
+use log::error;
+use serde::Deserialize;
+use serde_yaml;
+use simplelog::{ConfigBuilder, LevelFilter, WriteLogger};
 
-// TODO change the name of this
+// Constants
+const DEFAULT_ERROR: &str = "BAT Error!\nBAT Error!\n#FF0000";
+
+// Traits
+pub trait I3Block{
+    fn format_i3(&self) -> String;
+}
+
+/// Container for configuration options
+#[derive(Deserialize)]
 pub struct Config {
+    /// Path to the log file
     log_file_path: String,
 }
 
-// TODO add the units to each
-#[derive(Debug, Default)]
-pub struct Battery {
-    charge_full: Option<u64>,         // last 'full' charge (µAh)
-    charge_full_design: Option<u64>,  // 'full' design charge (µAh)
-    charge_now: Option<u64>,          // current charge (µAh)
-    current_now: Option<u64>,
-    status: Option<String>,
+impl Config {
+    /// Parses configuration options
+    /// 
+    /// The constructor additionally initialize a `WriteLogger` to log any
+    /// errors to a log file. Logged errors will contain a detailed 
+    /// description about the failure that can't be captured by the `battery`
+    /// block in the i3 bar.
+    /// 
+    /// # Arguments
+    ///
+    /// - `args`: A slice of command line arguments
+    ///
+    /// # Returns
+    ///
+    /// A `Result`:
+    /// - `Ok`: A `Config` with parsed configuration options
+    /// - `Err`: A `String` with error to be displayed by i3
+    pub fn new(args: &[String]) -> Result<Config, String> {
+        // Check number of arguments
+        if args.len() != 2 {
+            let e = "BAT Args error!\nBAT Args error!\n#FF0000";
+            return Err(e.into());
+        }
 
-    capacity_design: u64,
-    capacity_full: u64,
-    capacity_now: u64,
-    charge_status: String,
-    present_rate: u64,
-    time_remaining: u64,
+        // Open configuration file
+        let file = match std::fs::File::open(&args[1]) {
+            Ok(v) => v,
+            Err(_) => {
+                let e = "BAT File error!\nBAT File error!\n#FF0000";
+                return Err(e.into());
+            },
+        };
+
+        // Parse configuration file
+        let config: Config = match serde_yaml::from_reader(file) {
+            Ok(v) => v,
+            Err(_) => {
+                let e = "BAT Parse error!\nBAT Parse error!\n#FF0000";
+                return Err(e.into());
+            },
+        };
+
+        // Create logger
+        let file = match std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&config.log_file_path) {
+                Ok(v) => v,
+                Err(_) => {
+                    let e = "BAT File error!\nBAT File error!\n#FF0000";
+                    return Err(e.into());
+                },
+            };
+
+        let logger = ConfigBuilder::new()
+            .set_time_format_str("%a %b %e %T %Y")
+            .set_time_to_local(true)
+            .build();
+
+        if let Err(_) = WriteLogger::init(LevelFilter::Info, logger, file) {
+            let e = "BAT Logger error!\nBAT Logger error!\n#FF0000";
+            return Err(e.into());
+        }
+
+        Ok(config)
+    }
+}
+
+/// Battery change states
+#[derive(PartialEq)]
+enum ChargeStatus {
+    Charging,
+    Discharging,
+    Full,
+    Unknown,
+}
+
+impl Default for ChargeStatus {
+    fn default() -> Self { ChargeStatus::Unknown } 
+}
+
+/// Battery info/stats
+#[derive(Default)]
+pub struct Battery {
+    charge_full: Option<u64>,         // last 'full' charge (mAh)
+    charge_full_design: Option<u64>,  // 'full' design charge (mAh)
+    charge_now: Option<u64>,          // present charge (mAh)
+    current_now: Option<u64>,         // present current (mA)
+    status: Option<String>,           // charging status
+
+    capacity_design: u64,             // 'full' design capacity (mAh)
+    capacity_full: u64,               // last 'full' capacity (mAh)
+    capacity_now: u64,                // present capacity (mAh)
+    charge_status: ChargeStatus,      // charging status
+    present_rate: u64,                // present current (mA)
+    time_remaining: u64,              // remaining (dis)charge time (s)
 }
 
 impl Battery {
     pub fn new(path: &PathBuf) -> Option<Battery> {
         let mut battery = Battery::default();
 
-        // TODO log!
+        // Read battery directory
         let entries = match path.read_dir() {
             Ok(v) => v,
-            // Err(_) => return Err(String::from("Error!")),
-            Err(_) => return None,
+            Err(e) => {
+                error!("battery::Battery::new {}", e);
+                return None;
+            },
         };
 
         // Parse files
@@ -43,32 +138,26 @@ impl Battery {
                 if let Some(entry_name) = entry.file_name().to_str() {
                     let entry_path = entry.path();
                     match entry_name {
-                        "charge_full" =>
-                            battery.charge_full = parse_file::<u64>(&entry_path)
-                                .map(|v| v / 1000),
-                        "charge_full_design" => 
-                            battery.charge_full_design = parse_file::<u64>(&entry_path)
-                                .map(|v| v / 1000),
-                        "charge_now" =>
-                            battery.charge_now = parse_file::<u64>(&entry_path)
-                                .map(|v| v / 1000),
-                        "current_now" =>
-                            battery.current_now = parse_file::<u64>(&entry_path)
-                                .map(|v| v / 1000),
-                        "status" =>
-                            battery.status = parse_file(&entry_path),
+                        "charge_full" => battery.charge_full =
+                            parse_file::<u64>(&entry_path).map(|v| v / 1000),
+                        "charge_full_design" => battery.charge_full_design =
+                            parse_file::<u64>(&entry_path).map(|v| v / 1000),
+                        "charge_now" => battery.charge_now =
+                            parse_file::<u64>(&entry_path).map(|v| v / 1000),
+                        "current_now" => battery.current_now =
+                            parse_file::<u64>(&entry_path).map(|v| v / 1000),
+                        "status" => battery.status = parse_file(&entry_path),
                         _ => (),
                     }
                 }
             }
         }
 
-        // TODO log at each level here
-        
         // Determine battery's current capacity
         if battery.charge_full.is_some() {
             battery.capacity_full = battery.charge_full.unwrap();
         } else {
+            error!("battery::Battery::new: unable to compute `capacity_full`");
             return None;
         }
 
@@ -76,13 +165,16 @@ impl Battery {
         if battery.charge_full_design.is_some() {
             battery.capacity_design = battery.charge_full_design.unwrap();
         } else {
+            error!("battery::Battery::new:\
+                    unable to compute `capacity_design`");
             return None;
         }
 
-        // Determine battery's remaining capacity
+        // Determine battery's present capacity
         if battery.charge_now.is_some() {
             battery.capacity_now = battery.charge_now.unwrap();
         } else {
+            error!("battery::Battery::new: unable to compute `capacity_now`");
             return None;
         }
 
@@ -90,157 +182,101 @@ impl Battery {
         if battery.current_now.is_some() {
             battery.present_rate = battery.current_now.unwrap();
         } else {
+            error!("battery::Battery::new unable to compute `current_now`");
             return None;
         }
 
         // Determine battery's state
         if let Some(status) = battery.status.clone() {
-            match status.to_ascii_lowercase().as_str() {
-                "charging" => {
-                    battery.charge_status = String::from("charging");
+            match status.as_str() {
+                "Charging" => {
+                    battery.charge_status = ChargeStatus::Charging;
                     battery.time_remaining = (3600 *
                         (battery.capacity_full - battery.capacity_now)) /
                         battery.present_rate;
                 },
-                "discharging" => {
-                    battery.charge_status = String::from("discharging");
+                "Discharging" => {
+                    battery.charge_status = ChargeStatus::Discharging;
                     battery.time_remaining = (3600 * battery.capacity_now) /
                         battery.present_rate;
                 },
-                "full" => battery.charge_status = String::from("full"),
-                _ => battery.charge_status = String::from("unknown"),
+                "Full" => battery.charge_status = ChargeStatus::Full,
+                _ => {}
             };
-        } else {
-            battery.charge_status = String::from("unknown");
         }
 
         Some(battery)
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Batteries {
-    cells: Vec<Battery>,
+    cells: Vec<Battery>,          // available individual battery cells
 
-    capacity_percent: f64,
-    charge_percent: f64,
-    charge_status: String,
-    time_remaining: u64
+    capacity_percent: f64,        // current capacity (%)
+    charge_percent: f64,          // current charge (%)
+    charge_status: ChargeStatus,  // overall charging status
+    time_remaining: u64           // remaining (dis)charge times (s)
 }
 
-// TODO figure out if should return Result or Option
 impl Batteries {
     pub fn new(path: &PathBuf) -> Result<Batteries, String> {
         let mut batteries = Batteries::default();
 
+        // Read `power_supply` directory
         let entries = match path.read_dir() {
             Ok(v) => v,
-            Err(_) => return Err(String::from("Error!")),
+            Err(e) => {
+                error!("battery::Batteries::new: {}", e);
+                return Err(DEFAULT_ERROR.into());
+            },
         };
 
-        // Gather cells
-        let mut lcm_capacity_design: u64 = 1;
-        let mut lcm_capacity_full: u64 = 1;
-        let mut charge_status_mask: u8 = 0;
-
-        // TODO reduce the nesting here!
-        // TODO remove the LCM stuff
+        // Gather all battery cells
+        let mut charge_mask: u8 = 0;
         for entry in entries {
             if let Ok(entry) = entry {
                 if let Some(entry_name) = entry.file_name().to_str() {
-                    if entry_name.starts_with("BAT") {
-                        // And log the error instead (?)
-                        if let Some(battery) = Battery::new(&entry.path()) {
-                            
-                            lcm_capacity_design =
-                                (lcm_capacity_design * battery.capacity_design)
-                                / gcd(lcm_capacity_design, battery.capacity_design);
+                    if !entry_name.starts_with("BAT") {
+                        continue;
+                    }
 
-                            lcm_capacity_full =
-                                (lcm_capacity_full * battery.capacity_full)
-                                / gcd(lcm_capacity_full, battery.capacity_full);
-
-                            match battery.charge_status.as_str() {
-                                "charging" => charge_status_mask |= 1,
-                                "full" => charge_status_mask |= 2,
-                                "discharging" => charge_status_mask |= 4,
-                                _ => charge_status_mask |= 8,
-                            }
-                            
-                            batteries.cells.push(battery);
+                    // Parse a battery
+                    if let Some(battery) = Battery::new(&entry.path()) {
+                        match battery.charge_status {
+                            ChargeStatus::Charging => charge_mask |= 1,
+                            ChargeStatus::Discharging => charge_mask |= 2,
+                            ChargeStatus::Full => charge_mask |= 4,
+                            _ => charge_mask |= 8,
                         }
+                        batteries.cells.push(battery);
+                    } else {
+                        error!("battery::Batteries::new:\
+                                unable to parse battery {}", entry_name);
                     }
                 }
             }
         }
 
-        // TODO set the batteries.charge_status here instead
-        // Valid cases:
-        //  charging and full only
-        //  full only
-        //  discharging
-        
-        println!("Charge mask - {}", charge_status_mask);
+        // Check if any cells
+        if batteries.cells.len() == 0 {
+            error!("battery::Batteries::new: no battery cells");
+            return Err(DEFAULT_ERROR.into());
+        }
 
-        // TODO make charge_status be an ENUM instead!
-        batteries.charge_status = String::from("unknown");
-        if charge_status_mask == 2 {
+        // Determine overall charge status
+        if charge_mask == 4 {
             // Batteries are all full
-            batteries.charge_status = String::from("full");
-        } else if charge_status_mask == 1 || charge_status_mask == 3 {
+            batteries.charge_status = ChargeStatus::Full;
+        } else if charge_mask == 1 || charge_mask == 5 {
             // Batteries are all charging or full
-            batteries.charge_status = String::from("charging");
-        } else if charge_status_mask == 4 {
+            batteries.charge_status = ChargeStatus::Charging;
+        } else if charge_mask == 2 {
             // Batteries are all discharging
-            batteries.charge_status = String::from("discharging");
+            batteries.charge_status = ChargeStatus::Discharging;
         }
 
-        /*
-        // TODO eliminate the LCM stuff by using floating point numbers!
-        // Gather information
-        let mut capacity_full: u64 = 0;
-        let mut capacity_now: u64 = 0;
-        for cell in &batteries.cells {
-            let mult_dc = lcm_capacity_design / cell.capacity_design;
-            capacity_full += mult_dc * cell.capacity_full;
-
-            let mult_cc = lcm_capacity_full / cell.capacity_full;
-            capacity_now += mult_cc * cell.capacity_now;
-
-            if batteries.charge_status == "charging" ||
-                batteries.charge_status == "discharging" {
-                batteries.time_remaining += cell.time_remaining;
-            }
-        }
-
-        batteries.capacity_percent = 100.0 * (capacity_full as f64) / 
-            ((lcm_capacity_design * (batteries.cells.len() as u64)) as f64);
-
-        batteries.charge_percent = 100.0 * (capacity_now as f64) / 
-            ((lcm_capacity_full * (batteries.cells.len() as u64)) as f64);
-
-        println!("Capacity - {}", batteries.capacity_percent);
-        println!("Charge - {}", batteries.charge_percent);
-        println!("Status - {}", batteries.charge_status);
-        println!("Time - {}", batteries.time_remaining);
-
-        // TODO remove this!
-        // Gather information
-        let mut capacity_percent: f64 = 0.0;
-        let mut charge_percent: f64 = 0.0;
-        for cell in &batteries.cells {
-            capacity_percent += (cell.capacity_full as f64) / (cell.capacity_design as f64);
-            charge_percent += (cell.capacity_now as f64) / (cell.capacity_full as f64);
-        }
-
-        capacity_percent *= 100.0 / (batteries.cells.len() as f64);
-        charge_percent *= 100.0 / (batteries.cells.len() as f64);
-
-        println!("New capacity - {}", capacity_percent);
-        println!("new charge - {}", charge_percent);
-        */
-
-        // TODO simply sum up capacity_full, capacity_design, and capacity_now
+        // Compute overall information
         let mut capacity_design: u64 = 0;
         let mut capacity_full: u64 = 0;
         let mut capacity_now: u64 = 0;
@@ -249,8 +285,8 @@ impl Batteries {
             capacity_full += cell.capacity_full;
             capacity_now += cell.capacity_now;
 
-            if batteries.charge_status == "charging" ||
-                batteries.charge_status == "discharging" {
+            if batteries.charge_status == ChargeStatus::Charging ||
+                batteries.charge_status == ChargeStatus::Discharging {
                 batteries.time_remaining += cell.time_remaining;
             }
         }
@@ -260,57 +296,70 @@ impl Batteries {
         batteries.charge_percent = 100.0 * 
             (capacity_now as f64) / (capacity_full as f64);
 
-        println!("Capacity - {}", batteries.capacity_percent);
-        println!("Charge - {}", batteries.charge_percent);
-        println!("Status - {}", batteries.charge_status);
-        println!("Time - {}", batteries.time_remaining);
-
         Ok(batteries)
     }
 }
 
+impl I3Block for Batteries {
+    fn format_i3(&self) -> String {
+        let status = match self.charge_status {
+            ChargeStatus::Charging => String::from("CHR"),
+            ChargeStatus::Discharging => String::from("DIS"),
+            ChargeStatus::Full => String::from("FUL"),
+            ChargeStatus::Unknown => String::from("UKN"),
+        };
 
+        let color = match self.charge_status {
+            ChargeStatus::Charging => "#00FF00",
+            ChargeStatus::Discharging => {
+                let charge = self.charge_percent;
+                if charge >= 90.0 {
+                    "#00FF00"
+                } else if charge >= 80.0 {
+                    "#37FF00"
+                } else if charge >= 70.0 {
+                    "#75FF00"
+                } else if charge >= 60.0 {
+                    "AAFF00"
+                } else if charge >= 50.0 {
+                    "#E1FF00"
+                } else if charge >= 40.0 {
+                    "#FFE100"
+                } else if charge >= 30.0 {
+                    "#FFAA00"
+                } else if charge >= 20.0 {
+                    "#FF7300"
+                } else if charge >= 10.0 {
+                    "#FF3700"
+                } else {
+                    "#FF000"
+                }
+            },
+            _ => "#FFFFFF",
+        };
 
-pub fn read_file() {
-    let path = "/sys/class/power_supply/BAT0/charge_now";
+        let time = match self.charge_status {
+            ChargeStatus::Charging | ChargeStatus::Discharging => {
+                let mut time = self.time_remaining; 
+                let hours = time / 3600;
 
-    let content = fs::read_to_string(path);
-    println!("Content - {:?}", content);
-}
+                time = time - (hours * 3600);
+                let minutes = time / 60;
 
-pub fn read_file_generic<T>(path: &str) -> Result<T, Box<dyn Error>>
-    where T: std::str::FromStr + std::fmt::Debug {
-    let contents = fs::read_to_string(path).unwrap(); // TODO handle this better
-    let trimmed = contents.trim();
+                time = time - (minutes * 60);
+                let seconds = time;
 
-    let value = match trimmed.parse::<T>() {
-        Ok(v) => v,
-        Err(_) => {
-            let e = "Error unable to convert to requested type!";
-            return Err(e.into());
-        }
-    };
+                format!(" {}:{:02}:{:02}", hours, minutes, seconds)
+            },
+            _ => String::from(""),
+        };
 
-    println!("Contents - {:?}", contents);
-    println!("Value - {:?}", value);
+        let full_text = format!("BAT {:.0}% ({:.0}%) {}{}", self.charge_percent,
+                                self.capacity_percent, status, time);
+        let short_text = format!("BAT {:.0}%{}", self.charge_percent, time);
 
-    return Ok(value);
-}
-
-// TODO remove the debug option
-fn read_file_v2<T>(path: &str) -> Option<T>
-        where T: std::str::FromStr + std::fmt::Debug {
-    let contents = match fs::read_to_string(path) {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let value = match contents.trim().parse::<T>() {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    Some(value)
+        format!("{}\n{}\n{}", full_text, short_text, color)
+    }
 }
 
 fn parse_file<T>(path: &PathBuf) -> Option<T>
@@ -326,39 +375,10 @@ fn parse_file<T>(path: &PathBuf) -> Option<T>
     }
 }
 
-fn gcd(mut u: u64, mut v: u64) -> u64 {
-    if u == 0 {
-        return v;
-    } else if v == 0 {
-        return u;
-    }
-
-    let shift = (u | v).trailing_zeros();
-    u >>= shift;
-    v >>= shift;
-    u >>= u.trailing_zeros();
-
-    loop {
-        v >>= v.trailing_zeros();
-
-        if u > v {
-            let t = u;
-            u = v;
-            v = t;
-        }
-
-        v -= u;
-        if v == 0 {
-            break;
-        }
-    }
-
-    u << shift
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::relative_eq;
 
     const EPSILON: f64 = 1e-5;
     
@@ -367,7 +387,7 @@ mod tests {
         num_cells: usize,
         capacity_percent: f64,
         charge_percent: f64,
-        charge_status: String,
+        charge_status: ChargeStatus,
         time_remaining: u64
     }
     
@@ -383,29 +403,6 @@ mod tests {
                      epsilon=EPSILON);
         assert_eq!(batteries.charge_status, bt.charge_status);
         assert_eq!(batteries.time_remaining, bt.time_remaining);
-    }
-
-
-    #[test]
-    fn test_gcd_zeros() {
-        assert_eq!(gcd(0, 0), 0);
-        assert_eq!(gcd(0, 1), 1);
-        assert_eq!(gcd(1, 0), 1);
-    }
-
-    #[test]
-    fn test_gcd_ones() {
-        assert_eq!(gcd(1, 1), 1);
-        assert_eq!(gcd(1, 10), 1);
-        assert_eq!(gcd(10, 1), 1);
-        assert_eq!(gcd(7, 11), 1);
-    }
-
-    #[test]
-    fn test_gcd() {
-        assert_eq!(gcd(4, 10), 2);
-        assert_eq!(gcd(50, 15), 5);
-        assert_eq!(gcd(49, 49), 49);
     }
 
     #[test]
@@ -434,7 +431,7 @@ mod tests {
         assert_eq!(battery.capacity_design, 7570);
         assert_eq!(battery.capacity_full, 5394);
         assert_eq!(battery.capacity_now, 1449);
-        assert_eq!(battery.charge_status, String::from("charging"));
+        assert_eq!(battery.charge_status, ChargeStatus::Charging);
         assert_eq!(battery.present_rate, 2643);
         assert_eq!(battery.time_remaining, 5373);
     }
@@ -446,7 +443,7 @@ mod tests {
             num_cells: 1,
             capacity_percent: 100.0 * (5394.0 / 7570.0),
             charge_percent: 100.0 * (1449.0 / 5394.0),
-            charge_status: String::from("charging"),
+            charge_status: ChargeStatus::Charging,
             time_remaining: 5373,
         };
         validate_batteries(&bt);
@@ -459,14 +456,12 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent:  100.0 * (4640.0 / 11499.0),
-            charge_status: String::from("charging"),
+            charge_status: ChargeStatus::Charging,
             time_remaining: 13867,
         };
         validate_batteries(&bt);
     }
 
-    // TODO change the charge_status to be an Enum
-    // TODO change the structure of the test below
     #[test]
     fn test_two_batteries_chr_dis() {
         let bt = BatteriesTest {
@@ -474,7 +469,7 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent: 100.0 * (4640.0 / 11499.0),
-            charge_status: String::from("unknown"),
+            charge_status: ChargeStatus::Unknown,
             time_remaining: 0,
         };
         validate_batteries(&bt);
@@ -487,7 +482,7 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent: 100.0 * (7554.0 / 11499.0),
-            charge_status: String::from("charging"),
+            charge_status: ChargeStatus::Charging,
             time_remaining: 5373,
         };
         validate_batteries(&bt);
@@ -500,7 +495,7 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent: 100.0 * (4640.0 / 11499.0),
-            charge_status: String::from("discharging"),
+            charge_status: ChargeStatus::Discharging,
             time_remaining: 11274,
         };
         validate_batteries(&bt);
@@ -513,7 +508,7 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent: 100.0 * (7554.0 / 11499.0),
-            charge_status: String::from("unknown"),
+            charge_status: ChargeStatus::Unknown,
             time_remaining: 0,
         };
         validate_batteries(&bt);
@@ -526,9 +521,23 @@ mod tests {
             num_cells: 2,
             capacity_percent: 100.0 * (11499.0 / 16320.0),
             charge_percent: 100.0,
-            charge_status: String::from("full"),
+            charge_status: ChargeStatus::Full,
             time_remaining: 0,
         };
         validate_batteries(&bt);
+    }
+
+    #[test]
+    fn test_one_battery_format_i3() {
+        let output = String::from(
+            "BAT 27% (71%) CHR 1:29:33\nBAT 27% 1:29:33\n#00FF00"
+        );
+
+        let path = PathBuf::from("tests/one-battery");
+        let batteries = Batteries::new(&path);
+        assert_eq!(batteries.is_ok(), true);
+
+        let batteries = batteries.unwrap();
+        assert_eq!(output, batteries.format_i3());
     }
 }
