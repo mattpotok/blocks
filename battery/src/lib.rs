@@ -319,7 +319,7 @@ impl I3Block for Batteries {
                 } else if charge >= 70.0 {
                     "#75FF00"
                 } else if charge >= 60.0 {
-                    "AAFF00"
+                    "#AAFF00"
                 } else if charge >= 50.0 {
                     "#E1FF00"
                 } else if charge >= 40.0 {
