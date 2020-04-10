@@ -2,6 +2,7 @@ use std::env;
 use std::process;
 
 use weather;
+use weather::I3Block;
 
 fn main() {
     // Parse configuration file
@@ -15,7 +16,7 @@ fn main() {
     };
 
     // Fetch external IP
-    let ipv4 = match weather::IPv4::new(config.log_info) {
+    let ipv4 = match weather::IPv4::new(config.log_extra) {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
@@ -24,7 +25,7 @@ fn main() {
     };
 
     // Fetch geolocation based on IP
-    let location = match weather::GeoLocation::new(ipv4, config.log_info) {
+    let location = match weather::GeoLocation::new(ipv4, config.log_extra) {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
@@ -34,7 +35,7 @@ fn main() {
 
     // Fetch weather report
     match weather::OpenWeatherReport::new(&location, &config) {
-        Ok(report) => println!("{}", report.fmt_i3()),
+        Ok(report) => println!("{}", report.format_i3()),
         Err(e) => {
             println!("{}", e);
             process::exit(1);

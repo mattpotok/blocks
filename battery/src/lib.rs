@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 
 use log::error;
@@ -18,7 +17,7 @@ pub trait I3Block{
 #[derive(Deserialize)]
 pub struct Config {
     /// Path to the log file
-    log_file_path: String,
+    log_file_path: PathBuf,
 }
 
 impl Config {
@@ -364,7 +363,7 @@ impl I3Block for Batteries {
 
 fn parse_file<T>(path: &PathBuf) -> Option<T>
         where T: std::str::FromStr + std::fmt::Debug {
-    let contents = match fs::read_to_string(path) {
+    let contents = match std::fs::read_to_string(path) {
         Ok(v) => v,
         Err(_) => return None,
     };

@@ -1,2 +1,6 @@
-/target
+# Rust
+target/
 **/*.rs.bk
+
+# Vim
+[._]*.sw[a-p]

@@ -1,0 +1,2 @@
+# Configuration YAML for `battery` block
+log_file_path: /absolute/path/to/log/file

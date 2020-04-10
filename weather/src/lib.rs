@@ -1,5 +1,4 @@
 use std::fmt;
-use std::fs::{File, OpenOptions};
 use std::net::ToSocketAddrs;
 
 use reqwest;
@@ -8,21 +7,23 @@ use serde_yaml;
 use log::{error, info};
 use simplelog::{ConfigBuilder, LevelFilter, WriteLogger};
 
-// TODO update version of request
-// TODO run program on click on click as well
-
 // Constants
 const DEFAULT_ERROR: &str = "WTR Error!\nWTR Error!\n#FF0000";
+
+// Traits
+pub trait I3Block{
+    fn format_i3(&self) -> String;
+}
 
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(default = "Config::default_bool_false")]
-    pub log_info: bool,
+    pub log_extra: bool,
 
     #[serde(default = "Config::default_bool_true")]
     check_connection: bool,
 
-    log_file_path: String,
+    log_file_path: std::path::PathBuf,
 
     open_weather_api_key: String,
 
@@ -32,14 +33,14 @@ pub struct Config {
 
 impl Config {
     pub fn new(args: &[String]) -> Result<Config, String> {
-        // Check number of args
+        // Check number of arguments
         if args.len() != 2 {
             let e = "WTR Args error!\nWTR Args error!\n#FF000";
             return Err(e.into());
         }
 
         // Open configuration file
-        let file = match File::open(&args[1]) {
+        let file = match std::fs::File::open(&args[1]) {
             Ok(v) => v,
             Err(_) => {
                 let e = "WTR File error!\nWTR File error!\n#FF000";
@@ -56,8 +57,8 @@ impl Config {
             }
         };
 
-        // Initialize file logger
-        let log_file = match OpenOptions::new()
+        // Create logger
+        let file = match std::fs::OpenOptions::new()
             .append(true)
             .create(true)
             .open(&config.log_file_path) {
@@ -68,13 +69,12 @@ impl Config {
             }
         };
 
-        let logger_config = ConfigBuilder::new()
+        let logger = ConfigBuilder::new()
             .set_time_format_str("%a %b %e %T %Y")
             .set_time_to_local(true)
             .build();
 
-        if let Err(_) = WriteLogger::init(LevelFilter::Info, logger_config,
-                                          log_file) {
+        if let Err(_) = WriteLogger::init(LevelFilter::Info, logger, file) {
             let e = "WTR Logger error!\nWTR Logger error!\n#FF000";
             return Err(e.into());
         }
@@ -84,18 +84,13 @@ impl Config {
             return Err("WTR 404\nWTR F04\n#FFFFFF".into());
         }
 
-        // Verify `temperature_unit`
+        // Verify temperature unit
         config.temperature_units = config.temperature_units.to_ascii_uppercase();
         let unit = config.temperature_units;
         if !(unit == 'F' || unit == 'C'  || unit == 'K') {
             error!("weather::Config::new: invalid temperature unit '{}', select from \
                 ['C', 'F', 'K']", unit);
             return Err(DEFAULT_ERROR.into());
-        }
-
-        // Log information
-        if config.log_info {
-            info!("weather::Config::new: parsed configuration");
         }
 
         Ok(config)
@@ -131,7 +126,6 @@ impl IPv4 {
         // Extract response body
         match resp.text() {
             Ok(v) => {
-                // Log information
                 if log {
                     info!("weather::IPv4::new: external IP is {}", v);
                 }
@@ -189,7 +183,6 @@ impl GeoLocation {
             return Err(DEFAULT_ERROR.into());
         }
 
-        // Log information
         if log {
             info!("weather::GeoLocation::new: geolocation is {}", location);
         }
@@ -258,23 +251,26 @@ impl OpenWeatherReport {
         }
 
         // Log information
-        if config.log_info {
+        if config.log_extra {
             info!("weather::OpenWeatherReport::new: \
-                  current weather is{:.1}°{}, {}", report.main.temp,
+                  current weather is {:.1}°{}, {}", report.main.temp,
                   report.main.scale,
                   report.weather[0].main.to_ascii_lowercase());
         }
 
         Ok(report)
     }
+}
 
-    pub fn fmt_i3(&self) -> String {
+impl I3Block for OpenWeatherReport {
+    fn format_i3(&self) -> String {
         let full_text = format!("WTR {:.1}°{}, {}", self.main.temp, self.main.scale,
                                 self.weather[0].main.to_ascii_lowercase());
         let short_text = format!("WTR {:.1}°{}", self.main.temp, self.main.scale);
         let color = "#FFFFFF";
         
         format!("{}\n{}\n{}", full_text, short_text, color)
+
     }
 }
 

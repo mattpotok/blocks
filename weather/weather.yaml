@@ -1,0 +1,6 @@
+# Configuration YAML for `weather` block
+check_connection: bool
+log_extra: bool
+log_file_path: /absolute/path/to/log/file
+open_weather_api_key: OpenWeatherApiKey
+temperature_units: [C, F, K]
