@@ -29,7 +29,7 @@ Configure i3blocks
 
 ```
 [weather]
-command=~/.config/i3blocks/bin/battery ~/.config/i3blocks/cfg/battery.yaml
+command=~/.config/i3blocks/bin/weather ~/.config/i3blocks/cfg/weather.yaml
 interval=1800
 ```
 
