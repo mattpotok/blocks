@@ -288,12 +288,22 @@ impl Batteries {
                 batteries.charge_status == ChargeStatus::Discharging {
                 batteries.time_remaining += cell.time_remaining;
             }
+
+            // TODO add log option to log the cells
         }
+
+        // TODO max the percents at 100%
+        /* TODO
+        batteries.capacity_percent = std::max(100.0,
+            100.0 * (capacity_full as f64) / (capacity_design as f64));
+        */
 
         batteries.capacity_percent = 100.0 *
             (capacity_full as f64) / (capacity_design as f64);
         batteries.charge_percent = 100.0 * 
             (capacity_now as f64) / (capacity_full as f64);
+
+        // TODO add log option to log overall battery
 
         Ok(batteries)
     }
