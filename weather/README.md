@@ -16,11 +16,13 @@ file at `~/.config/i3blocks/cfg/` following the template below.
 
 ```yaml
 # Configuration YAML for `weather` block
-check_connection: bool  # Check if there is an internet connection
-log_extra: bool  # Log extra information (IP, geolocation, weather)
+check_connection: bool [default = true]
+log_geolocation: bool [default = false]
 log_file_path: /absolute/path/to/log/file
+log_ip: bool [default = false]
+log_weather_report: bool [default = false]
 open_weather_api_key: OpenWeatherApiKey
-temperature_units: [C, F, K]  # Desired temperature units
+temperature_scale: {C, F, K}
 ```
 
 ## Usage
