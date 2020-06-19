@@ -1,5 +1,4 @@
 use std::fmt;
-use std::net::ToSocketAddrs;
 
 use log::{error, info};
 use reqwest;
@@ -25,9 +24,6 @@ pub struct Config {
 
     #[serde(default = "Config::default_bool_false")]
     pub log_weather_report: bool,
-
-    #[serde(default = "Config::default_bool_true")]
-    check_connection: bool,
 
     log_file_path: std::path::PathBuf,
 
@@ -86,11 +82,6 @@ impl Config {
             return Err(e.into());
         }
 
-        // Check access to Internet
-        if config.check_connection && !check_connection() {
-            return Err("WTR 404\nWTR F04\n#FFFFFF".into());
-        }
-
         // Verify temperature scale
         config.temperature_scale = config.temperature_scale.to_ascii_uppercase();
         let unit = config.temperature_scale;
@@ -108,10 +99,6 @@ impl Config {
 
     fn default_bool_false() -> bool {
         false
-    }
-
-    fn default_bool_true() -> bool {
-        true
     }
 
     fn default_temperature_scale() -> char {
@@ -293,16 +280,4 @@ impl I3Block for OpenWeatherReport {
 
         format!("{}\n{}\n{}", full_text, short_text, color)
     }
-}
-
-fn check_connection() -> bool {
-    // Check connection to 'root-servers'
-    for letter in b'a'..=b'm' {
-        let addr = format!("{}.root-servers.net:80", letter as char);
-        if let Ok(_) = addr.to_socket_addrs() {
-            return true;
-        }
-    }
-
-    false
 }

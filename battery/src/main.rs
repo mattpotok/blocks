@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use battery;
 use battery::I3Block;
 
@@ -10,17 +8,17 @@ fn main() {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
-            std::process::exit(1);
-        },
+            std::process::exit(0);
+        }
     };
-    
+
     // Parse batteries
-    let path = PathBuf::from("/sys/class/power_supply");
+    let path = std::path::PathBuf::from("/sys/class/power_supply");
     match battery::Batteries::new(&path, config.log_batteries) {
         Ok(batteries) => println!("{}", batteries.format_i3()),
         Err(e) => {
             println!("{}", e);
-            std::process::exit(1);
-        },
+            std::process::exit(0);
+        }
     }
 }

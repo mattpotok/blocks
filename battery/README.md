@@ -17,8 +17,11 @@ file at `~/.config/i3blocks/cfg/` following the template below.
 
 ```yaml
 # Configuration YAML for `battery` block
-log_batteries: bool [default = false]
+# Required
 log_file_path: /absolute/path/to/log/file
+
+# Optional
+log_batteries: bool [default = false]
 ```
 
 ## Usage

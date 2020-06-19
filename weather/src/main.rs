@@ -1,17 +1,14 @@
-use std::env;
-use std::process;
-
 use weather;
 use weather::I3Block;
 
 fn main() {
     // Parse configuration file
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
     let config = match weather::Config::new(&args) {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
-            process::exit(1);
+            std::process::exit(0);
         }
     };
 
@@ -20,7 +17,7 @@ fn main() {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
-            process::exit(1);
+            std::process::exit(0);
         }
     };
 
@@ -29,7 +26,7 @@ fn main() {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
-            process::exit(1);
+            std::process::exit(0);
         }
     };
 
@@ -43,7 +40,7 @@ fn main() {
         Ok(report) => println!("{}", report.format_i3()),
         Err(e) => {
             println!("{}", e);
-            process::exit(1);
+            std::process::exit(0);
         }
     };
 }

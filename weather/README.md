@@ -16,13 +16,15 @@ file at `~/.config/i3blocks/cfg/` following the template below.
 
 ```yaml
 # Configuration YAML for `weather` block
-check_connection: bool [default = true]
-log_geolocation: bool [default = false]
+# Required
 log_file_path: /absolute/path/to/log/file
+open_weather_api_key: OpenWeatherApiKey
+temperature_scale: {C, F, K} [default = F]
+
+# Optional
+log_geolocation: bool [default = false]
 log_ip: bool [default = false]
 log_weather_report: bool [default = false]
-open_weather_api_key: OpenWeatherApiKey
-temperature_scale: {C, F, K}
 ```
 
 ## Usage
