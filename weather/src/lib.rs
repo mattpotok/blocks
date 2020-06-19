@@ -1,34 +1,40 @@
 use std::fmt;
 use std::net::ToSocketAddrs;
 
+use log::{error, info};
 use reqwest;
 use serde::Deserialize;
 use serde_yaml;
-use log::{error, info};
 use simplelog::{ConfigBuilder, LevelFilter, WriteLogger};
 
 // Constants
 const DEFAULT_ERROR: &str = "WTR Error!\nWTR Error!\n#FF0000";
 
 // Traits
-pub trait I3Block{
+pub trait I3Block {
     fn format_i3(&self) -> String;
 }
 
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(default = "Config::default_bool_false")]
-    pub log_extra: bool,
+    pub log_ip: bool,
+
+    #[serde(default = "Config::default_bool_false")]
+    pub log_geolocation: bool,
+
+    #[serde(default = "Config::default_bool_false")]
+    pub log_weather_report: bool,
 
     #[serde(default = "Config::default_bool_true")]
     check_connection: bool,
 
     log_file_path: std::path::PathBuf,
 
-    open_weather_api_key: String,
+    pub open_weather_api_key: String,
 
-    #[serde(default = "Config::default_temperature_unit")]
-    temperature_units: char,
+    #[serde(default = "Config::default_temperature_scale")]
+    pub temperature_scale: char,
 }
 
 impl Config {
@@ -61,7 +67,8 @@ impl Config {
         let file = match std::fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&config.log_file_path) {
+            .open(&config.log_file_path)
+        {
             Ok(v) => v,
             Err(_) => {
                 let e = "WTR File error!\nWTR File error!\n#FF0000";
@@ -84,12 +91,15 @@ impl Config {
             return Err("WTR 404\nWTR F04\n#FFFFFF".into());
         }
 
-        // Verify temperature unit
-        config.temperature_units = config.temperature_units.to_ascii_uppercase();
-        let unit = config.temperature_units;
-        if !(unit == 'F' || unit == 'C'  || unit == 'K') {
-            error!("weather::Config::new: invalid temperature unit '{}', select from \
-                ['C', 'F', 'K']", unit);
+        // Verify temperature scale
+        config.temperature_scale = config.temperature_scale.to_ascii_uppercase();
+        let unit = config.temperature_scale;
+        if !(unit == 'F' || unit == 'C' || unit == 'K') {
+            error!(
+                "weather::Config::new: invalid temperature scale '{}', select from \
+                ['C', 'F', 'K']",
+                unit
+            );
             return Err(DEFAULT_ERROR.into());
         }
 
@@ -104,7 +114,7 @@ impl Config {
         true
     }
 
-    fn default_temperature_unit() -> char {
+    fn default_temperature_scale() -> char {
         'F'
     }
 }
@@ -130,7 +140,7 @@ impl IPv4 {
                     info!("weather::IPv4::new: external IP is {}", v);
                 }
                 Ok(IPv4(v))
-            },
+            }
             Err(e) => {
                 error!("weather::IPv4::new: {}", e);
                 Err(DEFAULT_ERROR.into())
@@ -144,7 +154,7 @@ impl fmt::Display for IPv4 {
         write!(f, "{}", self.0)
     }
 }
-       
+
 #[derive(Deserialize)]
 pub struct GeoLocation {
     status: String,
@@ -159,7 +169,9 @@ impl GeoLocation {
     pub fn new(ip: IPv4, log: bool) -> Result<GeoLocation, String> {
         // Get Geoleocation
         let url = format!(
-            "http://ip-api.com/json/{}?fields=status,message,lat,lon", ip);
+            "http://ip-api.com/json/{}?fields=status,message,lat,lon",
+            ip
+        );
         let resp = match reqwest::blocking::get(&url) {
             Ok(v) => v,
             Err(e) => {
@@ -218,12 +230,16 @@ pub struct OpenWeatherReport {
 
 impl OpenWeatherReport {
     pub fn new(
-        location: &GeoLocation, config: &Config
+        location: &GeoLocation,
+        api_key: String,
+        temperature_scale: char,
+        log: bool,
     ) -> Result<OpenWeatherReport, String> {
         // Get OpenWeather report
         let url = format!(
             "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}",
-            location.lat, location.lon, config.open_weather_api_key);
+            location.lat, location.lon, api_key
+        );
         let resp = match reqwest::blocking::get(&url) {
             Ok(v) => v,
             Err(e) => {
@@ -242,20 +258,22 @@ impl OpenWeatherReport {
         };
 
         // Convert temperature
-        report.main.scale = config.temperature_units;
+        report.main.scale = temperature_scale;
         match report.main.scale {
             'C' => report.main.temp -= 273.15,
-            'F' => report.main.temp = 
-                1.8 * (report.main.temp - 273.15) + 32.0,
+            'F' => report.main.temp = 1.8 * (report.main.temp - 273.15) + 32.0,
             _ => (),
         }
 
         // Log information
-        if config.log_extra {
-            info!("weather::OpenWeatherReport::new: \
-                  current weather is {:.1}°{}, {}", report.main.temp,
-                  report.main.scale,
-                  report.weather[0].main.to_ascii_lowercase());
+        if log {
+            info!(
+                "weather::OpenWeatherReport::new: \
+                  current weather is {:.1}°{}, {}",
+                report.main.temp,
+                report.main.scale,
+                report.weather[0].main.to_ascii_lowercase()
+            );
         }
 
         Ok(report)
@@ -264,23 +282,26 @@ impl OpenWeatherReport {
 
 impl I3Block for OpenWeatherReport {
     fn format_i3(&self) -> String {
-        let full_text = format!("WTR {:.1}°{}, {}", self.main.temp, self.main.scale,
-                                self.weather[0].main.to_ascii_lowercase());
+        let full_text = format!(
+            "WTR {:.1}°{}, {}",
+            self.main.temp,
+            self.main.scale,
+            self.weather[0].main.to_ascii_lowercase()
+        );
         let short_text = format!("WTR {:.1}°{}", self.main.temp, self.main.scale);
         let color = "#FFFFFF";
-        
-        format!("{}\n{}\n{}", full_text, short_text, color)
 
+        format!("{}\n{}\n{}", full_text, short_text, color)
     }
 }
 
 fn check_connection() -> bool {
     // Check connection to 'root-servers'
     for letter in b'a'..=b'm' {
-       let addr = format!("{}.root-servers.net:80", letter as char);
-       if let Ok(_) = addr.to_socket_addrs() {
-           return true;
-       }
+        let addr = format!("{}.root-servers.net:80", letter as char);
+        if let Ok(_) = addr.to_socket_addrs() {
+            return true;
+        }
     }
 
     false

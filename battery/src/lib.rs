@@ -1,6 +1,7 @@
+use std::fmt;
 use std::path::PathBuf;
 
-use log::error;
+use log::{error, info, warn};
 use serde::Deserialize;
 use serde_yaml;
 use simplelog::{ConfigBuilder, LevelFilter, WriteLogger};
@@ -18,6 +19,10 @@ pub trait I3Block{
 pub struct Config {
     /// Path to the log file
     log_file_path: PathBuf,
+
+    /// Log battery information
+    #[serde(default = "Config::default_bool_false")]
+    pub log_batteries: bool,
 }
 
 impl Config {
@@ -86,10 +91,14 @@ impl Config {
 
         Ok(config)
     }
+
+    fn default_bool_false() -> bool {
+        false
+    }
 }
 
-/// Battery change states
-#[derive(PartialEq)]
+/// Battery charge states
+#[derive(Debug, PartialEq)]
 enum ChargeStatus {
     Charging,
     Discharging,
@@ -101,9 +110,22 @@ impl Default for ChargeStatus {
     fn default() -> Self { ChargeStatus::Unknown } 
 }
 
-/// Battery info/stats
+impl fmt::Display for ChargeStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ChargeStatus::Charging => write!(f, "charging"),
+            ChargeStatus::Discharging => write!(f, "discharging"),
+            ChargeStatus::Full => write!(f, "full"),
+            ChargeStatus::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Battery information
 #[derive(Default)]
 pub struct Battery {
+    name: String,                     // name of the cell
+
     charge_full: Option<u64>,         // last 'full' charge (mAh)
     charge_full_design: Option<u64>,  // 'full' design charge (mAh)
     charge_now: Option<u64>,          // present charge (mAh)
@@ -122,6 +144,23 @@ impl Battery {
     pub fn new(path: &PathBuf) -> Option<Battery> {
         let mut battery = Battery::default();
 
+        // Get battery name
+        match path.file_name() {
+            Some(v) => {
+                match v.to_str() {
+                    Some(name) => battery.name = String::from(name),
+                    None => {
+                        error!("battery::Battery::new unable to parse name");
+                        return None;
+                    },
+                }
+            },
+            None => {
+                error!("battery::Battery::new unable to parse name");
+                return None;
+            },
+        };
+        
         // Read battery directory
         let entries = match path.read_dir() {
             Ok(v) => v,
@@ -204,6 +243,13 @@ impl Battery {
             };
         }
 
+        // Warn and cap on invalid battery reading
+        if battery.capacity_now > battery.capacity_full {
+            battery.capacity_now = battery.capacity_full;
+            warn!("battery::Battery::new invalid reading `capacity_now` >\
+                  `capacity_full`, capping member");
+        }
+
         Some(battery)
     }
 }
@@ -219,7 +265,7 @@ pub struct Batteries {
 }
 
 impl Batteries {
-    pub fn new(path: &PathBuf) -> Result<Batteries, String> {
+    pub fn new(path: &PathBuf, log: bool) -> Result<Batteries, String> {
         let mut batteries = Batteries::default();
 
         // Read `power_supply` directory
@@ -289,21 +335,32 @@ impl Batteries {
                 batteries.time_remaining += cell.time_remaining;
             }
 
-            // TODO add log option to log the cells
+            if log {
+                info!("battery::Batteries::new: cell {}\n\
+                      \t* capacity design - {} mAh\n\
+                      \t* capacity full - {} mAh\n\
+                      \t* capacity now - {} mAh\n\
+                      \t* charge status - {}",
+                      cell.name, cell.capacity_design, cell.capacity_full,
+                      cell.capacity_now, cell.charge_status.to_string());
+            }
         }
 
-        // TODO max the percents at 100%
-        /* TODO
-        batteries.capacity_percent = std::max(100.0,
-            100.0 * (capacity_full as f64) / (capacity_design as f64));
-        */
+        if log {
+            info!("battery::Batteries::new: all cells\n\
+                  \t* capacity design - {} mAh\n\
+                  \t* capacity full - {} mAh\n\
+                  \t* capacity now - {} mAh\n\
+                  \t* charge status - {}",
+                  capacity_design, capacity_full, capacity_now,
+                  batteries.charge_status.to_string());
+        }
 
+        // Compute percentages
         batteries.capacity_percent = 100.0 *
             (capacity_full as f64) / (capacity_design as f64);
         batteries.charge_percent = 100.0 * 
             (capacity_now as f64) / (capacity_full as f64);
-
-        // TODO add log option to log overall battery
 
         Ok(batteries)
     }
@@ -401,7 +458,7 @@ mod tests {
     }
     
     fn validate_batteries(bt: &BatteriesTest) {
-        let batteries = Batteries::new(&bt.path);
+        let batteries = Batteries::new(&bt.path, false);
         assert_eq!(batteries.is_ok(), true);
 
         let batteries = batteries.unwrap();
@@ -423,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_file_String() {
+    fn test_parse_file_string() {
         let path = PathBuf::from("tests/one-battery/BAT0/status");
         let out = parse_file::<String>(&path);
         assert_eq!(out.is_some(), true);
@@ -543,7 +600,7 @@ mod tests {
         );
 
         let path = PathBuf::from("tests/one-battery");
-        let batteries = Batteries::new(&path);
+        let batteries = Batteries::new(&path, false);
         assert_eq!(batteries.is_ok(), true);
 
         let batteries = batteries.unwrap();

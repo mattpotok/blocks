@@ -16,7 +16,7 @@ fn main() {
     };
 
     // Fetch external IP
-    let ipv4 = match weather::IPv4::new(config.log_extra) {
+    let ipv4 = match weather::IPv4::new(config.log_ip) {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
@@ -25,7 +25,7 @@ fn main() {
     };
 
     // Fetch geolocation based on IP
-    let location = match weather::GeoLocation::new(ipv4, config.log_extra) {
+    let location = match weather::GeoLocation::new(ipv4, config.log_geolocation) {
         Ok(v) => v,
         Err(e) => {
             println!("{}", e);
@@ -34,7 +34,12 @@ fn main() {
     };
 
     // Fetch weather report
-    match weather::OpenWeatherReport::new(&location, &config) {
+    match weather::OpenWeatherReport::new(
+        &location,
+        config.open_weather_api_key,
+        config.temperature_scale,
+        config.log_weather_report,
+    ) {
         Ok(report) => println!("{}", report.format_i3()),
         Err(e) => {
             println!("{}", e);
