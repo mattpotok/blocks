@@ -14,13 +14,14 @@ mkdir -p $I3BLOCKS_CFG_DIR
 touch $I3BLOCKS_DIR/blocks.log
 
 # Install `battery` blocklet
-cd battery
-cargo install --path . --root $I3BLOCKS_DIR
-cp battery.yaml $I3BLOCKS_CFG_DIR
-cd ..
+cargo install --path battery --root $I3BLOCKS_DIR
+cp battery/battery.yaml $I3BLOCKS_CFG_DIR
+
+# Install `simon` blocklet
+cargo install --path simon --root $I3BLOCKS_DIR
+cp simon/simon.yaml $I3BLOCKS_CFG_DIR
+
 
 # Install `weather` blocklet
-cd weather
-cargo install --path . --root $I3BLOCKS_DIR
-cp weather.yaml $I3BLOCKS_CFG_DIR
-cd ..
+cargo install --path weather --root $I3BLOCKS_DIR
+cp weather/weather.yaml $I3BLOCKS_CFG_DIR
